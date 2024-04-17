@@ -1,6 +1,8 @@
 use chrono::Local;
 use std::{
-    io::{BufRead, BufReader},
+    fs::canonicalize,
+    io::{self, BufRead, BufReader},
+    path::PathBuf,
     process::{Command, Stdio},
     thread,
 };
@@ -10,8 +12,29 @@ fn current_datetime() -> String {
     now.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+// get current directory of build script
+fn current_dir() -> PathBuf {
+    PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+}
+
+// treat the relative path as relative to the build script
+// so we can use the build script out of workspace root directory
+fn get_absolute_dir_of_program(path: &str) -> io::Result<PathBuf> {
+    let program_dir = PathBuf::from(path);
+    canonicalize(if program_dir.is_relative() {
+        current_dir().join(program_dir)
+    } else {
+        program_dir
+    })
+}
+
 pub fn build_program(path: &str) {
-    let program_dir = std::path::Path::new(path);
+    let program_dir = get_absolute_dir_of_program(path).unwrap_or_else(|_| {
+        panic!(
+            "Failed to get the absolute path of the program directory `{}`.",
+            path
+        );
+    });
 
     // Tell cargo to rerun the script only if program/{src, Cargo.toml, Cargo.lock} changes
     // Ref: https://doc.rust-lang.org/nightly/cargo/reference/build-scripts.html#rerun-if-changed
